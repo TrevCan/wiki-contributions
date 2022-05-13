@@ -160,11 +160,10 @@ $HTTP["host"] == "git-test.yourdomain.com" {
 
 h2. Recommendations.
 
-h2. Debugging.
+h3. Debugging.
 
 For *CGI*, use 
-@server.breakagelog = "/var/log/lighttpd/breakage.log"@ to print stderr to the
-file.
+@server.breakagelog = "/var/log/lighttpd/breakage.log"@ to log stderr.
 
 h2. Final config.
 
@@ -173,6 +172,9 @@ h2. Final config.
 # git server over HTTPS  configuration for lighttpd.
 # author: trevcan
 # github.com/trevcan/
+
+
+server.breakagelog = "/var/log/lighttpd/breakage.log"
 
 server.modules += ("mod_setenv", "mod_cgi", "mod_alias")
 server.modules += ("mod_auth", "mod_authn_file")
@@ -216,8 +218,7 @@ $HTTP["host"] == "git-test.yourdomain.com" {
 
 h2. References
 
-- "Smart HTTP":https://git-scm.com/book/en/v2/Git-on-the-Server-Smart-HTTP git
-documentation.
+- "Smart HTTP":https://git-scm.com/book/en/v2/Git-on-the-Server-Smart-HTTP git documentation.
 - [[Docs_ModAuth|Lighttpd Docs Mod Auth]] 
 - [[Docs_ModCGI|Lighttpd Docs Mod CGI]]
 - [[Docs_ModSetEnv|Lighttpd Docs Mod SetEnv]]
