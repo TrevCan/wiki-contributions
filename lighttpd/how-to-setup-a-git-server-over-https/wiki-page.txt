@@ -2,8 +2,6 @@ h1. How to set up a git server over HTTP (s)
 
 {{>toc}}
 
-*DRAFT. This is still a Work-in-progress article.*
-
 One may have already set up a git server, it's as easy as enabling ssh on a *NIX machine. 
 
 *But one may have encountered* the not-so-usual situation where you're on a random network 
@@ -219,7 +217,7 @@ $HTTP["host"] == "git-test.yourdomain.com" {
 h2. References
 
 - "Smart HTTP":https://git-scm.com/book/en/v2/Git-on-the-Server-Smart-HTTP git
-  documentation.
+documentation.
 - [[Docs_ModAuth|Lighttpd Docs Mod Auth]] 
 - [[Docs_ModCGI|Lighttpd Docs Mod CGI]]
 - [[Docs_ModSetEnv|Lighttpd Docs Mod SetEnv]]
