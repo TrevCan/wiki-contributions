@@ -1,0 +1,226 @@
+h1. How to set up a git server over HTTP (s)
+
+{{>toc}}
+
+*DRAFT. This is still a Work-in-progress article.*
+
+One may have already set up a git server, it's as easy as enabling ssh on a *NIX machine. 
+
+*But one may have encountered* the not-so-usual situation where you're on a random network 
+and *you can't access port 22!*.
+
+This is a guide on how to set up a git over HTTPs server.
+The git protocol used for this will be _Smart HTTP_, refer to the "references":https://redmine.lighttpd.net/projects/lighttpd/wiki/How_to_set_up_a_git_server_over_http(s)/#References section.
+
+h2. Step 1: Permissions, permissions and more permissions!
+
+See: https://redmine.lighttpd.net/projects/lighttpd/wiki/FrequentlyAskedQuestions#Why-do-I-get-403-Forbidden
+
+Permissions are very important ! Remember that git will be performing reads and writes to directories and files ! Be sure to set up your user and group correctly. You may have to @chmod and chown@ your git repo in order for it to be accessible to your user. *You cannot change user/group at runtime of lighttpd.*
+
+h2. Step 2: Dependencies and Modules.
+
+For system dependencies, you will require (of course)
+- @git@ (make sure you have the @/usr/lib/git-core/git-http-backend@ binary, this should be installed by default with the git package on Arch Linux)
+
+For lighttpd modules, you will require:
+- [[Docs_ModCGI|mod_cgi]]
+- [[Docs_ModAlias|mod_alias]]
+- [[Docs_ModSetEnv|mod_setenv]]
+- [[Docs_ModAuth|mod_auth]] (optional) with @mod_authn_file@.
+
+h2. Step 3: Bare Minimum Config for specific repos.
+
+*You must use a subdomain or another domain altogether* , else the CGI script will get confused and won't
+be able to read the paths correctly.
+
+The bare minimum to get the CGI @git-http-backend@ script working is:
+- set the environment variable @GIT_PROJECT_ROOT@ to the parent directory of one of your git repositories.
+- create a @git-daemon-export-ok@ file inside each git repo you'd like to make accessible.
+
+<pre><code>
+
+server.modules += ("mod_setenv", "mod_cgi", "mod_alias")
+
+$HTTP["host"] == "git-test.yourdomain.com" {
+
+	alias.url = ( "" => "/usr/lib/git-core/git-http-backend" )
+
+	setenv.set-environment = ( "GIT_PROJECT_ROOT" => "/var/www/git/" )
+
+	cgi.assign = ( "" => "" )
+}
+
+</code></pre>
+
+the code above assumes:
+- your domain @git-test.yourdomain.com@ is only used for this CGI script.
+- @/var/www/git/@ is a directory with bare git repositories inside them.
+- and each repository (server-side) has a @git-daemon-export-ok@ file inside it.
+
+h2. Step 4: Adding automatic repo discovery
+
+Ok, you've got a basic config working. Now you'd like some kind of automatic
+discovery so that you don't have to manually add each git repo.
+
+One can do this by setting the environment variable @GIT_HTTP_EXPORT_ALL@:
+
+@setenv.set-environment += ( "GIT_HTTP_EXPORT_ALL" => "" )@
+
+remember that you should use the @+=@ operator when wanting to append variables. See https://redmine.lighttpd.net/projects/lighttpd/wiki/Docs_ModSetEnv
+
+Great! Now you can clone any repo under @/var/www/git/@.
+
+h2. Step 5: Adding Authentication through HTTP.
+
+According to the git Smart HTTP docs, git itself does not implement any kind
+of security. That is the job of the web server, in our case, lighttpd.
+
+We can implement security by adding HTTP authentication.
+
+Refer to the [[Docs_ModAuth|Mod Auth guide]].
+
+The following would *only* allow authenticated users to clone from and push to repositories:
+
+<pre><code class="lighttpd">
+server.modules += ("mod_setenv", "mod_cgi", "mod_alias")
+server.modules += ("mod_auth", "mod_authn_file")
+# using mod auth with plain text module mod_authhn_file
+
+
+$HTTP["host"] == "git-test.yourdomain.com" {
+
+        auth.backend = "plain"
+        auth.backend.plain.userfile = "/home/www-data/user-info"
+# password file is at /home/www-data/user-info
+# example plain-text password file:
+# agent007:secret
+
+        auth.require = ( "" => ("method" => "basic", "realm" => "example", "require" => "valid-user") )
+# this must be set to require auth under this domain.
+
+    alias.url = ( "" => "/usr/lib/git-core/git-http-backend" )
+
+    setenv.set-environment = ( "GIT_PROJECT_ROOT" => "/var/www/git/" )
+    setenv.set-environment += ( "GIT_HTTP_EXPORT_ALL" => "" )
+
+
+    cgi.assign = ( "" => "" )
+
+}
+
+</code></pre>
+
+h2. Step 5: Only allowing secure *HTTPS* connections.
+
+This is easy. Just configure https as normal for your subdomain. 
+Then wrap all the code around an @HTTPS request @
+conditional, like so:
+
+<pre><code class="lighttpd">
+server.modules += ("mod_setenv", "mod_cgi", "mod_alias")
+server.modules += ("mod_auth", "mod_authn_file")
+# using mod auth with plain text module mod_authhn_file
+
+
+$HTTP["host"] == "git-test.yourdomain.com" {
+
+
+    $SERVER["socket"] == ":443" {
+    	ssl.engine                  = "enable" ,
+		ssl.privkey                 = "/etc/keys/your-domain/privkey.pem" ,
+		ssl.pemfile                 = "/etc/keys/your-domain/fullchain.pem"  ,
+   	}
+
+
+	$HTTP["scheme"] == "https" {
+
+     auth.backend = "plain"
+     auth.backend.plain.userfile = "/home/www-data/user-info"
+
+# password file is at /home/www-data/user-info
+# example plain-text password file:
+# agent007:secret
+
+    auth.require = ( "" => ("method" => "basic", "realm" => "example", "require" => "valid-user") )
+# this must be set to require auth under this domain.
+
+    alias.url = ( "" => "/usr/lib/git-core/git-http-backend" )
+
+    setenv.set-environment = ( "GIT_PROJECT_ROOT" => "/var/www/git/" )
+    setenv.set-environment += ( "GIT_HTTP_EXPORT_ALL" => "" )
+
+
+    cgi.assign = ( "" => "" )
+
+	}
+}
+
+</code></pre>
+
+
+
+h2. Recommendations.
+
+h2. Debugging.
+
+For *CGI*, use 
+@server.breakagelog = "/var/log/lighttpd/breakage.log"@ to print stderr to the
+file.
+
+h2. Final config.
+
+<pre><code class="lighttpd">
+
+# git server over HTTPS  configuration for lighttpd.
+# author: trevcan
+# github.com/trevcan/
+
+server.modules += ("mod_setenv", "mod_cgi", "mod_alias")
+server.modules += ("mod_auth", "mod_authn_file")
+# using mod auth with plain text module mod_authhn_file
+
+
+$HTTP["host"] == "git-test.yourdomain.com" {
+
+
+    $SERVER["socket"] == ":443" {
+    	ssl.engine                  = "enable" ,
+		ssl.privkey                 = "/etc/keys/your-domain/privkey.pem" ,
+		ssl.pemfile                 = "/etc/keys/your-domain/fullchain.pem"  ,
+   	}
+
+
+	$HTTP["scheme"] == "https" {
+
+     auth.backend = "plain"
+     auth.backend.plain.userfile = "/home/www-data/user-info"
+
+# password file is at /home/www-data/user-info
+# example plain-text password file:
+# agent007:secret
+
+    auth.require = ( "" => ("method" => "basic", "realm" => "example", "require" => "valid-user") )
+# this must be set to require auth under this domain.
+
+    alias.url = ( "" => "/usr/lib/git-core/git-http-backend" )
+
+    setenv.set-environment = ( "GIT_PROJECT_ROOT" => "/var/www/git/" )
+    setenv.set-environment += ( "GIT_HTTP_EXPORT_ALL" => "" )
+
+
+    cgi.assign = ( "" => "" )
+
+	}
+}
+
+</code></pre>
+
+h2. References
+
+- "Smart HTTP":https://git-scm.com/book/en/v2/Git-on-the-Server-Smart-HTTP git
+  documentation.
+- [[Docs_ModAuth|Lighttpd Docs Mod Auth]] 
+- [[Docs_ModCGI|Lighttpd Docs Mod CGI]]
+- [[Docs_ModSetEnv|Lighttpd Docs Mod SetEnv]]
+- [[Docs_ModAlias|Lighttpd Docs Mod Alias]]
